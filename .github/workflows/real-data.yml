@@ -8,6 +8,12 @@ on:
       - 'MUSE/**'
       - 'harness/run_real_data.R'
       - '.github/workflows/real-data.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'MUSE/**'
+      - 'harness/**'
+      - '.github/workflows/real-data.yml'
 
 permissions:
   contents: read
@@ -28,7 +34,8 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages('xml2', repos = 'https://cloud.r-project.org')
-          system2(file.path(R.home('bin'), 'R'), c('CMD', 'INSTALL', 'MUSE'), stdout = TRUE, stderr = TRUE)
+          install_log <- system2(file.path(R.home('bin'), 'R'), c('CMD', 'INSTALL', 'MUSE'), stdout = TRUE, stderr = TRUE)
+          cat(paste(install_log, collapse = '\n'), '\n')
           stopifnot(as.character(packageVersion('MUSE')) == '0.2.0')
 
       - name: Run independent package smoke test
@@ -49,7 +56,13 @@ jobs:
           stopifnot(nrow(e) == 3L, nrow(sy) == 3L, nrow(w) == 2L)
           stopifnot(e$midi[1] == 70.5, is.na(e$pitch_class[1]), e$pitch_class_12[1] == 10.5)
           stopifnot(e$score_onset_q[3] >= 4, all(e$score_offset_q >= e$score_onset_q))
-          p <- muse_permutation(data.frame(x=c(1,2,3)), mean, function(x) x[sample(nrow(x)),,drop=FALSE], n=99, seed=1)
+          p <- muse_permutation(
+            data.frame(x = c(1, 2, 3)),
+            statistic = function(d) mean(d$x),
+            permute = function(d) d[sample(nrow(d)), , drop = FALSE],
+            n = 99,
+            seed = 1
+          )
           stopifnot(inherits(p, 'muse_permutation'), length(p$null) == 99L)
           dir.create('analysis-output', showWarnings = FALSE)
           writeLines(capture.output(print(s)), 'analysis-output/smoke-test.txt')
