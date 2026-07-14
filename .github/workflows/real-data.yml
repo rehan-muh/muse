@@ -1,0 +1,85 @@
+name: MUSE real-data analysis
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'MUSE/**'
+      - 'harness/run_real_data.R'
+      - '.github/workflows/real-data.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+
+      - name: Install package dependency and MUSE
+        shell: Rscript {0}
+        run: |
+          install.packages('xml2', repos = 'https://cloud.r-project.org')
+          system2(file.path(R.home('bin'), 'R'), c('CMD', 'INSTALL', 'MUSE'), stdout = TRUE, stderr = TRUE)
+          stopifnot(as.character(packageVersion('MUSE')) == '0.2.0')
+
+      - name: Run independent package smoke test
+        shell: Rscript {0}
+        run: |
+          library(MUSE)
+          xml <- paste0(
+            '<?xml version="1.0"?><score-partwise version="4.0">',
+            '<part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>',
+            '<part id="P1"><measure number="A"><attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>',
+            '<note><pitch><step>B</step><alter>-0.5</alter><octave>4</octave></pitch><duration>2</duration><voice>1</voice><lyric><syllabic>begin</syllabic><text>mu</text></lyric></note>',
+            '<note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><lyric><syllabic>end</syllabic><text>sic</text></lyric></note></measure>',
+            '<measure number="B"><note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><lyric><syllabic>single</syllabic><text>works</text></lyric></note></measure>',
+            '</part></score-partwise>')
+          s <- read_musicxml_string(xml, validate = TRUE)
+          stopifnot(is_muse_score(s), nrow(validate_muse_score(s)) == 0L)
+          e <- muse_table(s, 'event'); sy <- muse_table(s, 'syllable'); w <- muse_table(s, 'word')
+          stopifnot(nrow(e) == 3L, nrow(sy) == 3L, nrow(w) == 2L)
+          stopifnot(e$midi[1] == 70.5, is.na(e$pitch_class[1]), e$pitch_class_12[1] == 10.5)
+          stopifnot(e$score_onset_q[3] >= 4, all(e$score_offset_q >= e$score_onset_q))
+          p <- muse_permutation(data.frame(x=c(1,2,3)), mean, function(x) x[sample(nrow(x)),,drop=FALSE], n=99, seed=1)
+          stopifnot(inherits(p, 'muse_permutation'), length(p$null) == 99L)
+          dir.create('analysis-output', showWarnings = FALSE)
+          writeLines(capture.output(print(s)), 'analysis-output/smoke-test.txt')
+
+      - name: Checkout real SymbTr MusicXML data
+        shell: bash
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/MTG/SymbTr.git symbtr
+          git -C symbtr sparse-checkout set MusicXML
+          echo "SYMBTR_COMMIT=$(git -C symbtr rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Run real-data analysis
+        shell: bash
+        run: |
+          set -o pipefail
+          Rscript harness/run_real_data.R 2>&1 | tee analysis-output/analysis.log
+          cp harness/run_real_data.R analysis-output/
+          tar -czf MUSE-real-data-results.tar.gz analysis-output
+
+      - name: List result files
+        if: always()
+        shell: bash
+        run: find analysis-output -maxdepth 1 -type f -printf '%f\t%s bytes\n' | sort || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: MUSE-real-data-results
+          path: |
+            analysis-output
+            MUSE-real-data-results.tar.gz
+          if-no-files-found: error
+          retention-days: 30
