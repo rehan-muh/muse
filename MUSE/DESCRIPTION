@@ -1,0 +1,30 @@
+Package: MUSE
+Title: MusicXML Unpacking for Statistical Evidence
+Version: 0.2.0
+Authors@R:
+    person("Muhammad", "Rehan", , "rehanmuh@g.ucla.edu", role = c("aut", "cre"))
+Description: Ingests MusicXML vocal scores and converts them into explicit,
+    analysis-ready tabular encodings of musical events (notes, rests, ties,
+    grace notes, durations, meter), pitch representations (MIDI, pitch class,
+    interval, contour), and lyric underlay (syllable boundaries, melisma spans,
+    word boundaries) aligned to the exact note(s) that realize each lyric
+    segment. From these encodings it derives interpretable text-setting
+    features (stress-to-beat alignment, melismatic density, melodic contour,
+    tone-melody correspondence) and provides modular interfaces to permutation
+    tests, GAM/spline models ('mgcv'), and GLMMs ('lme4' or 'brms'), with
+    plotting helpers. The architecture separates the XML-dependent reader from
+    pure transformation logic so that any component can be replaced or extended.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
+Depends:
+    R (>= 4.1.0)
+Imports:
+    xml2,
+    stats,
+    utils
+Suggests:
+    ggplot2
+URL: https://github.com/rehanmuh/MUSE
+BugReports: https://github.com/rehanmuh/MUSE/issues
